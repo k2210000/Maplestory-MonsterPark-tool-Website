@@ -20,43 +20,21 @@
     button{background:var(--card);color:var(--fg);border:1px solid var(--card-border);border-radius:10px;padding:8px 12px;font-size:14px;cursor:pointer}
     button:hover{filter:brightness(1.05)}
 
-    /* 主要版面：左盤面 + 右側可選區。右側採 max-content 以支援拖曳變寬 */
     main{padding:20px;display:grid;grid-template-columns: 1fr max-content;gap:20px}
     @media (max-width: 1100px){ main{grid-template-columns: 1fr} }
 
-    /* 盤面：3 | 2 | 3 直排欄 */
-    .board{display:flex;gap:var(--gap);justify-content:center;align-items:flex-start;flex-wrap:nowrap;overflow-x:auto}
-    .col{display:flex;flex-direction:column;gap:var(--gap)}
-    .col.middle{margin-top:calc((var(--cell) + var(--gap)) / 2)}
+    /* 九宮格盤面 */
+    .board{display:grid;grid-template-columns:repeat(3,var(--cell));grid-template-rows:repeat(3,var(--cell));gap:var(--gap);justify-content:center}
     .cell{width:var(--cell);height:var(--cell);background:var(--card);border:1px solid var(--card-border);border-radius:var(--radius);padding:10px;position:relative;display:flex;flex-direction:column}
     .cell.active{outline:2px solid #6aa3ff; outline-offset:2px}
     .title{font-size:12px;color:var(--muted);margin-bottom:6px}
     .imgbox{flex:1;display:grid;place-items:center;background:var(--well);border-radius:10px;overflow:hidden;border:1px dashed var(--card-border)}
-    .imgbox img{max-width:100%;max-height:100%;object-fit:contain;image-rendering:auto}
+    .imgbox img{max-width:100%;max-height:100%;object-fit:contain}
     .clear{position:absolute;top:8px;right:8px;width:30px;height:30px;border-radius:999px;display:grid;place-items:center}
 
-    /* 右側選擇池（可點） + 可拖曳調整大小 */
-    .pool{
-    position: sticky;
-    top: 76px;
-    background: var(--card);
-    border: 1px solid var(--card-border);
-    border-radius: var(--radius);
-    padding: 12px;
-
-    resize: both;
-    overflow: auto;
-
-    direction: rtl; /* 把 resize 手把放到左下角 */
-    }
-    .pool * {
-      direction: ltr; /* 裡面的文字保持正常 */
-    }
-    .opts{
-      display:grid;
-      gap:10px;
-      grid-template-columns: repeat(auto-fill, minmax(var(--tile-size), 1fr));
-    }
+    .pool{position: sticky;top: 76px;background: var(--card);border: 1px solid var(--card-border);border-radius: var(--radius);padding: 12px;resize: both;overflow: auto;direction: rtl;}
+    .pool * {direction: ltr;}
+    .opts{display:grid;gap:10px;grid-template-columns: repeat(auto-fill, minmax(var(--tile-size), 1fr));}
     .opt{border:1px solid var(--card-border);border-radius:12px;padding:6px;display:flex;flex-direction:column;gap:6px;cursor:pointer;background:var(--well);position:relative}
     .opt .pic{aspect-ratio:1/1;display:grid;place-items:center;overflow:hidden;border-radius:8px;background:var(--card)}
     .opt img{max-width:100%;max-height:100%;object-fit:contain}
@@ -64,24 +42,7 @@
     .opt.used{opacity:.35;filter:saturate(.2);cursor:not-allowed}
     .opt.used::after{content:'已用';position:absolute;top:6px;right:6px;font-size:10px;background:#0008;padding:2px 6px;border-radius:999px;border:1px solid var(--card-border)}
 
-    /* 讓右側整塊可拖曳縮放 */
-    .assign-resizable{
-      width:340px;
-      min-width:260px;
-      max-width:48vw;
-      min-height:240px;
-      max-height:80vh;
-      resize: both;
-      overflow: auto;
-
-      /* 新增：把右側面板當作「容器」來量尺寸 */
-      container-type: inline-size;
-
-      /* 新增：每個縮圖的基準尺寸，會隨面板寬度變化
-         1cqw = 容器寬度的 1%  */
-      --tile-size: clamp(88px, 28cqw, 160px);
-    }
-
+    .assign-resizable{width:340px;min-width:260px;max-width:48vw;min-height:240px;max-height:80vh;resize: both;overflow: auto;container-type: inline-size;--tile-size: clamp(88px, 28cqw, 160px);}
 
     .theme-toggle{position:fixed;right:16px;bottom:16px;border-radius:999px;padding:10px 12px;display:flex;align-items:center;gap:8px;z-index:3}
     .theme-toggle .icon{font-size:16px}
@@ -96,10 +57,9 @@
 
   <main>
     <section>
-      <div class="board" id="board" aria-live="polite"></div>
+      <div class="board" id="board"></div>
     </section>
     <aside>
-      <!-- 加上 assign-resizable 讓整塊可以拖曳放大縮小 -->
       <div class="pool assign-resizable">
         <h2>可選項目（點一下指派）</h2>
         <div class="opts" id="opts"></div>
@@ -113,197 +73,120 @@
   </button>
 
   <script>
-    /* ===== 主題（預設深色） ===== */
-    (function(){
-      var themeKey='mc_theme';
-      function applyTheme(t){
-        document.documentElement.setAttribute('data-theme', t==='light'?'light':'dark');
-        var icon=document.getElementById('themeIcon'); if(icon) icon.textContent=(t==='light'?'☀️':'🌙');
-        var text=document.getElementById('themeText'); if(text) text.textContent=(t==='light'?'淺色':'深色');
-        try{ localStorage.setItem(themeKey,t); }catch(e){}
-      }
-      var saved=null; try{ saved=localStorage.getItem(themeKey); }catch(e){}
-      applyTheme(saved||'dark');
-      var btn=document.getElementById('themeToggle');
-      if(btn){ btn.addEventListener('click', function(){
-        var cur=(document.documentElement.getAttribute('data-theme')==='light')?'light':'dark';
-        applyTheme(cur==='light'?'dark':'light');
-      }); }
-    })();
+    var LAYOUT=[3,3,3]; // 九宮格
+    var TOTAL=9;
 
-    /* ===== 固定資料 ===== */
-    var LAYOUT=[3,2,3]; // 直排 3 | 2 | 3
-    var TOTAL=(function(){ var s=0; for(var i=0;i<LAYOUT.length;i++) s+=LAYOUT[i]; return s; })();
     var OPTIONS_FALLBACK = [
       { "id": 1, "name": "未知的精銳劍齒虎", "image": "images/未知的精銳劍齒虎.png" },
       { "id": 2, "name": "未知的始祖鳥",     "image": "images/未知的始祖鳥.png" },
       { "id": 3, "name": "未知的變異史萊姆", "image": "images/未知的變異史萊姆.png" },
       { "id": 4, "name": "未知的雷電鳥",     "image": "images/未知的雷電鳥.png" },
-      { "id": 5, "name": "未知的蝗蛇",       "image": "images/未知的蝗蛇.png" },
+      { "id": 5, "name": "未知的蝮蛇",       "image": "images/未知的蝮蛇.png" },
       { "id": 6, "name": "未知的綠水靈",     "image": "images/未知的綠水靈.png" },
       { "id": 7, "name": "未知的劍齒虎",     "image": "images/未知的劍齒虎.png" },
       { "id": 8, "name": "未知的毒蛇",       "image": "images/未知的毒蛇.png" }
     ];
 
-    // 狀態：每個 cell 指派到哪個 option.name；以及目前作用中的 cell
-    var assignKey='mch_4224_assign';
-    var activeKey='mch_4224_active';
-    function loadAssign(){ try{ return JSON.parse(localStorage.getItem(assignKey)||'null')||{} }catch(e){ return {} } }
-    function saveAssign(map){ try{ localStorage.setItem(assignKey, JSON.stringify(map)); }catch(e){} }
-    function loadActive(){ try{ return JSON.parse(localStorage.getItem(activeKey)||'null') }catch(e){ return null } }
-    function saveActive(i){ try{ localStorage.setItem(activeKey, JSON.stringify(i)); }catch(e){} }
-    function clearAllStorage(){ try{ localStorage.removeItem(assignKey); localStorage.removeItem(activeKey);}catch(e){} }
+    var assignKey='mch_assign';
+    var activeKey='mch_active';
+    function loadAssign(){ try{ return JSON.parse(localStorage.getItem(assignKey)||'{}'); }catch(e){ return {}; } }
+    function saveAssign(m){ try{ localStorage.setItem(assignKey,JSON.stringify(m)); }catch(e){} }
+    function loadActive(){ try{ return JSON.parse(localStorage.getItem(activeKey)||'null'); }catch(e){ return null } }
+    function saveActive(i){ try{ localStorage.setItem(activeKey,JSON.stringify(i)); }catch(e){} }
+    function clearAllStorage(){ localStorage.removeItem(assignKey); localStorage.removeItem(activeKey); }
 
-    function fetchOptions(cb){
-      if(location.protocol==='http:'||location.protocol==='https:'){
-        fetch('options.json?v='+Date.now())
-          .then(function(r){ if(!r.ok) throw new Error('fetch options.json failed'); return r.json(); })
-          .then(function(data){ if(!Array.isArray(data)) throw new Error('bad json'); cb(data); })
-          .catch(function(){ cb(OPTIONS_FALLBACK); });
-      }else{ cb(OPTIONS_FALLBACK); }
-    }
+    function fetchOptions(cb){ cb(OPTIONS_FALLBACK); }
 
     function buildBoard(options){
       var board=document.getElementById('board');
       board.innerHTML='';
       var assign=loadAssign();
       var active=loadActive();
-      var cellIndex=0;
 
-      for(var col=0; col<LAYOUT.length; col++){
-        var colEl=document.createElement('div'); colEl.className='col'+(col===1?' middle':'');
-        for(var r=0; r<LAYOUT[col]; r++){
-          (function(idx){
-            var cell=document.createElement('div'); cell.className='cell'; cell.setAttribute('data-idx', idx);
-            if(active===idx) cell.classList.add('active');
-            var title=document.createElement('div'); title.className='title'; title.textContent='格 '+(idx+1);
-            var imgbox=document.createElement('div'); imgbox.className='imgbox';
-            var img=document.createElement('img'); img.alt=''; imgbox.appendChild(img);
-            var clear=document.createElement('button'); clear.className='clear'; clear.innerHTML='✕'; clear.title='清除此格';
+      var CELL_NAMES = [
+        "7號", "8號", "9號",
+        "4號", "祭壇", "6號",
+        "1號", "2號", "3號"
+      ];
 
-            cell.appendChild(title); cell.appendChild(imgbox); cell.appendChild(clear);
-            colEl.appendChild(cell);
+      for(var idx=0; idx<TOTAL; idx++){
+        (function(i){
+          var cell=document.createElement('div'); cell.className='cell'; cell.dataset.idx=i;
+          var title=document.createElement('div'); title.className='title';
+          title.textContent = CELL_NAMES[i] || ('格 ' + (i+1));
+          var imgbox=document.createElement('div'); imgbox.className='imgbox';
+          var img=document.createElement('img'); img.alt=''; imgbox.appendChild(img);
+          var clear=document.createElement('button'); clear.className='clear'; clear.textContent='✕';
 
-            // 點擊 cell → 設為作用中
-            cell.addEventListener('click', function(e){
-              if(e.target===clear) return; // 避免清除鈕冒泡
-              setActive(idx);
-            });
-            // 清除此格
-            clear.addEventListener('click', function(){ clearCell(idx, options); });
+          cell.appendChild(title); cell.appendChild(imgbox); cell.appendChild(clear);
+          board.appendChild(cell);
 
-            // 若有已指派，顯示圖片
-            var optName=assign[idx];
-            if(optName){
-              var opt=findByName(options, optName);
-              if(opt && opt.image){ img.src=opt.image; img.style.display='block'; }
-            }
-          })(cellIndex++);
-        }
-        board.appendChild(colEl);
+          if(i===4){ // 中間格固定祭壇
+            img.src='images/祭壇.png';
+            clear.style.display='none'; // 不能清除
+            cell.classList.add('fixed');
+            return;
+          }
+
+          cell.addEventListener('click',function(e){ if(e.target===clear)return; setActive(i); });
+          clear.addEventListener('click',function(){ clearCell(i,options); });
+
+          if(assign[i]){
+            var opt=findByName(options,assign[i]);
+            if(opt){ img.src=opt.image; }
+          }
+        })(idx);
       }
 
-      // 首次沒有作用格，預設第一個空格
-      if(loadActive()==null){
-        var firstEmpty=findFirstEmpty(assign);
-        setActive(firstEmpty!=null?firstEmpty:0);
-      } else {
-        highlightActive(loadActive());
-      }
-
+      if(active==null) setActive(0); else highlightActive(active);
       renderPool(options);
     }
 
-    function findByName(options, name){
-      for(var i=0;i<options.length;i++) if(options[i].name===name) return options[i];
-      return null;
-    }
+    function findByName(opts,name){ return opts.find(o=>o.name===name); }
 
-    function currentAssign(){ return loadAssign(); }
-
-    function setActive(idx){
-      saveActive(idx);
-      highlightActive(idx);
-    }
-
-    function highlightActive(idx){
-      var cells=document.querySelectorAll('.cell');
-      for(var i=0;i<cells.length;i++) cells[i].classList.remove('active');
-      var target=document.querySelector('.cell[data-idx="'+idx+'"]');
-      if(target) target.classList.add('active');
-    }
-
-    function findFirstEmpty(assign){
-      for(var i=0;i<TOTAL;i++) if(!assign[i]) return i; return null;
-    }
+    function setActive(i){ saveActive(i); highlightActive(i); }
+    function highlightActive(i){ document.querySelectorAll('.cell').forEach(c=>c.classList.remove('active')); var t=document.querySelector('.cell[data-idx="'+i+'"]'); if(t) t.classList.add('active'); }
 
     function renderPool(options){
       var host=document.getElementById('opts'); host.innerHTML='';
-      var usedNames={}; var asn=currentAssign();
-      for(var k in asn){ if(asn[k]) usedNames[asn[k]]=true; }
+      var used={}, asn=loadAssign(); for(var k in asn){ used[asn[k]]=true; }
 
-      for(var i=0;i<options.length;i++){
-        (function(opt){
-          var card=document.createElement('div'); card.className='opt'+(usedNames[opt.name]?' used':''); card.setAttribute('data-name', opt.name);
-          var pic=document.createElement('div'); pic.className='pic';
-          var img=document.createElement('img'); img.alt=opt.name; img.src=opt.image; pic.appendChild(img);
-          var nm=document.createElement('div'); nm.className='name'; nm.textContent=opt.name;
-          card.appendChild(pic); card.appendChild(nm);
-          host.appendChild(card);
+      options.forEach(function(opt){
+        var card=document.createElement('div'); card.className='opt'+(used[opt.name]?' used':''); card.dataset.name=opt.name;
+        var pic=document.createElement('div'); pic.className='pic';
+        var img=document.createElement('img'); img.src=opt.image; pic.appendChild(img);
+        var nm=document.createElement('div'); nm.className='name'; nm.textContent=opt.name;
+        card.appendChild(pic); card.appendChild(nm);
+        host.appendChild(card);
 
-          card.addEventListener('click', function(){
-            if(card.classList.contains('used')) return; // 不能重複
-            var act=loadActive(); if(act==null) setActive(0), act=0;
-            assignToCell(act, opt.name, options);
-          });
-        })(options[i]);
-      }
+        card.addEventListener('click',function(){
+          if(card.classList.contains('used'))return;
+          var act=loadActive(); if(act==null) act=0;
+          if(act===4)return; // 中間格禁止
+          assignToCell(act,opt.name,options);
+        });
+      });
     }
 
-    function assignToCell(idx, optName, options){
-      var asn=loadAssign();
-      asn[idx]=optName; // 設定新指派
-      saveAssign(asn);
-
-      // 更新該 cell 圖片
-      var cell=document.querySelector('.cell[data-idx="'+idx+'"]');
-      if(cell){
-        var img=cell.querySelector('img');
-        var opt=findByName(options, optName);
-        if(img && opt && opt.image){ img.src=opt.image; img.style.display='block'; }
-      }
-
-      // 重新渲染池（讓新指派的選項變成 used）
+    function assignToCell(i,name,options){
+      var asn=loadAssign(); asn[i]=name; saveAssign(asn);
+      var cell=document.querySelector('.cell[data-idx="'+i+'"] img'); var opt=findByName(options,name);
+      if(cell&&opt) cell.src=opt.image;
       renderPool(options);
-
-      // 自動移到下一個空格
-      var next=findFirstEmpty(asn);
+      var next=[...Array(TOTAL).keys()].find(j=>!asn[j] && j!==4);
       if(next!=null) setActive(next);
     }
 
-    function clearCell(idx, options){
-      var asn=loadAssign();
-      if(asn[idx]){
-        delete asn[idx];
-        saveAssign(asn);
-      }
-      // 清圖
-      var cell=document.querySelector('.cell[data-idx="'+idx+'"]');
-      if(cell){ var img=cell.querySelector('img'); if(img){ img.src=''; img.style.display='none'; } }
-      // 更新池
+    function clearCell(i,options){
+      var asn=loadAssign(); delete asn[i]; saveAssign(asn);
+      var cell=document.querySelector('.cell[data-idx="'+i+'"] img'); if(cell) cell.src='';
       renderPool(options);
     }
 
-    function clearAll(options){
-      clearAllStorage();
-      var imgs=document.querySelectorAll('.cell img'); for(var i=0;i<imgs.length;i++){ imgs[i].src=''; imgs[i].style.display='none'; }
-      renderPool(options);
-      setActive(0);
-    }
+    function clearAll(options){ clearAllStorage(); document.querySelectorAll('.cell img').forEach((im,idx)=>{if(idx!==4)im.src=''}); renderPool(options); setActive(0); }
 
-    // ========= 啟動 =========
-    document.getElementById('clearAll').addEventListener('click', function(){ fetchOptions(function(opts){ clearAll(opts); }); });
-    fetchOptions(function(opts){ buildBoard(opts); });
+    document.getElementById('clearAll').addEventListener('click',()=>fetchOptions(opts=>clearAll(opts)));
+    fetchOptions(opts=>buildBoard(opts));
   </script>
 </body>
 </html>
