@@ -23,8 +23,15 @@
     main{padding:20px;display:grid;grid-template-columns: 1fr max-content;gap:20px}
     @media (max-width: 1100px){ main{grid-template-columns: 1fr} }
 
-    /* 九宮格盤面 */
-    .board{display:grid;grid-template-columns:repeat(3,var(--cell));grid-template-rows:repeat(3,var(--cell));gap:var(--gap);justify-content:center}
+    /* 九宮格盤面：多增加第4欄，放每行的「複製」按鈕 */
+    .board{
+      display:grid;
+      grid-template-columns:repeat(3,var(--cell)) auto; /* 3格 + 右側按鈕欄 */
+      grid-template-rows:repeat(3,var(--cell));
+      gap:var(--gap);
+      justify-content:center;
+      align-items:start;
+    }
     .cell{width:var(--cell);height:var(--cell);background:var(--card);border:1px solid var(--card-border);border-radius:var(--radius);padding:10px;position:relative;display:flex;flex-direction:column}
     .cell.active{outline:2px solid #6aa3ff; outline-offset:2px}
     .title{font-size:12px;color:var(--muted);margin-bottom:6px}
@@ -44,6 +51,17 @@
     .opt.used{opacity:.35;filter:saturate(.2);cursor:not-allowed}
     .opt.used::after{content:'已用';position:absolute;top:6px;right:6px;font-size:10px;background:#0008;padding:2px 6px;border-radius:999px;border:1px solid var(--card-border)}
 
+    /* 每行的「複製上/中/下排」按鈕樣式（放在盤面第4欄） */
+    .rowcopy{
+      align-self:center;
+      justify-self:start;
+      height:40px;
+      padding:6px 10px;
+      border-radius:8px;
+      font-size:13px;
+      white-space:nowrap;
+    }
+
     .theme-toggle{position:fixed;right:16px;bottom:16px;border-radius:999px;padding:10px 12px;display:flex;align-items:center;gap:8px;z-index:3}
     .theme-toggle .icon{font-size:16px}
   </style>
@@ -52,12 +70,7 @@
   <header>
     <h1>終極怪物公園-工具</h1>
     <div class="spacer"></div>
-
-    <button id="copyTop">複製上排</button>
-    <button id="copyMid">複製中排</button>
-    <button id="copyBot">複製下排</button>
     <button id="copyAll">複製全部</button>
-
     <button id="clearAll">清空全部</button>
   </header>
 
@@ -79,8 +92,21 @@
   </button>
 
   <script>
-    /* 基本資料 */
     var TOTAL=9;
+
+    /* 名稱→簡稱對照（可依你習慣調整） */
+    var NAME_SHORT = {
+      "未知的精銳劍齒虎":"黑虎",
+      "未知的始祖鳥":"紅鳥",
+      "未知的變異史萊姆":"紫史",
+      "未知的雷電鳥":"綠鳥",
+      "未知的蝮蛇":"紅蛇",
+      "未知的綠水靈":"綠史",
+      "未知的劍齒虎":"藍虎",
+      "未知的毒蛇":"綠蛇",
+      "祭壇":"祭壇"
+    };
+
     var OPTIONS_FALLBACK = [
       { "id": 1, "name": "未知的精銳劍齒虎", "image": "images/未知的精銳劍齒虎.png" },
       { "id": 2, "name": "未知的始祖鳥",     "image": "images/未知的始祖鳥.png" },
@@ -100,26 +126,6 @@
     function loadActive(){ try{ return JSON.parse(localStorage.getItem(activeKey)||'null'); }catch(e){ return null } }
     function saveActive(i){ try{ localStorage.setItem(activeKey,JSON.stringify(i)); }catch(e){} }
     function clearAllStorage(){ localStorage.removeItem(assignKey); localStorage.removeItem(activeKey); }
-
-    /* 主題切換（預設深色） */
-    (function(){
-      var themeKey='mc_theme';
-      function applyTheme(t){
-        document.documentElement.setAttribute('data-theme', t==='light'?'light':'dark');
-        var icon=document.getElementById('themeIcon'); if(icon) icon.textContent=(t==='light'?'☀️':'🌙');
-        var text=document.getElementById('themeText'); if(text) text.textContent=(t==='light'?'淺色':'深色');
-        try{ localStorage.setItem(themeKey,t); }catch(e){}
-      }
-      var saved=null; try{ saved=localStorage.getItem(themeKey); }catch(e){}
-      applyTheme(saved||'dark');
-      var btn=document.getElementById('themeToggle');
-      if(btn){ btn.addEventListener('click', function(){
-        var cur=(document.documentElement.getAttribute('data-theme')==='light')?'light':'dark';
-        applyTheme(cur==='light'?'dark':'light');
-      }); }
-    })();
-
-    /* 初始化資料來源（這裡直接用內建 fallback） */
     function fetchOptions(cb){ cb(OPTIONS_FALLBACK); }
 
     /* 建盤 */
@@ -138,6 +144,10 @@
       for(var idx=0; idx<TOTAL; idx++){
         (function(i){
           var cell=document.createElement('div'); cell.className='cell'; cell.dataset.idx=i;
+          /* 依 row/col 佈局：row = Math.floor(i/3)+1, col = (i%3)+1 */
+          cell.style.gridRow = (Math.floor(i/3)+1);
+          cell.style.gridColumn = ((i%3)+1);
+
           var title=document.createElement('div'); title.className='title';
           title.textContent = CELL_NAMES[i] || ('格 ' + (i+1));
           var imgbox=document.createElement('div'); imgbox.className='imgbox';
@@ -149,20 +159,37 @@
 
           if(i===4){ // 中間格固定祭壇
             img.src='images/祭壇.png';
-            clear.style.display='none'; // 不能清除
+            clear.style.display='none';
             cell.classList.add('fixed');
-            return;
-          }
-
-          cell.addEventListener('click',function(e){ if(e.target===clear)return; setActive(i); });
-          clear.addEventListener('click',function(){ clearCell(i,options); });
-
-          if(assign[i]){
-            var opt=findByName(options,assign[i]);
-            if(opt){ img.src=opt.image; }
+          }else{
+            cell.addEventListener('click',function(e){ if(e.target===clear)return; setActive(i); });
+            clear.addEventListener('click',function(){ clearCell(i,options); });
+            if(assign[i]){
+              var opt=findByName(options,assign[i]);
+              if(opt){ img.src=opt.image; }
+            }
           }
         })(idx);
       }
+
+      /* 在第4欄放置三顆行別按鈕：上/中/下 */
+      var btnTop=document.createElement('button');
+      btnTop.className='rowcopy'; btnTop.textContent='複製上排';
+      btnTop.style.gridColumn='4'; btnTop.style.gridRow='1';
+      btnTop.addEventListener('click', ()=>copyLine(0));
+      board.appendChild(btnTop);
+
+      var btnMid=document.createElement('button');
+      btnMid.className='rowcopy'; btnMid.textContent='複製中排';
+      btnMid.style.gridColumn='4'; btnMid.style.gridRow='2';
+      btnMid.addEventListener('click', ()=>copyLine(1));
+      board.appendChild(btnMid);
+
+      var btnBot=document.createElement('button');
+      btnBot.className='rowcopy'; btnBot.textContent='複製下排';
+      btnBot.style.gridColumn='4'; btnBot.style.gridRow='3';
+      btnBot.addEventListener('click', ()=>copyLine(2));
+      board.appendChild(btnBot);
 
       if(active==null) setActive(0); else highlightActive(active);
       renderPool(options);
@@ -220,49 +247,55 @@
       setActive(0);
     }
 
-    /* 複製報位 */
-    // 產生三行報位文字（自動帶入當下時間 [HH:mm]）
+    /* 產生三行報位文字（無時間、無前綴） */
     function buildReportLines() {
       const asn = loadAssign();
-      const DIR = ["↖","↑","↗","←","","→","↙","↓","↘"]; // 各格方向
-      const now = new Date();
-      const hh = String(now.getHours()).padStart(2, "0");
-      const mm = String(now.getMinutes()).padStart(2, "0");
-      const timeStr = `[${hh}:${mm}]`;
+      const DIR = ["↖","↑","↗","←","","→","↙","↓","↘"];   // 各格方向
+      const NUM = ["7","8","9","4","5","6","1","2","3"]; // 各格數字
 
       function fmt(i) {
-        if (i === 4) return "祭壇"; // 中間固定
-        return (asn[i] ? asn[i] : "空") + DIR[i];
+        if (i === 4) return NUM[i] + "祭壇";
+        const full = asn[i];
+        const short = full ? (NAME_SHORT[full] || full) : "空";
+        return NUM[i] + short + DIR[i];
       }
 
-      const line1 = `${timeStr}報位小幫手：${[0,1,2].map(fmt).join(' ')}`;
-      const line2 = `${timeStr}報位小幫手：${[3,4,5].map(fmt).join(' ')}`;
-      const line3 = `${timeStr}報位小幫手：${[6,7,8].map(fmt).join(' ')}`;
-
+      const line1 = [0,1,2].map(fmt).join(' ');
+      const line2 = [3,4,5].map(fmt).join(' ');
+      const line3 = [6,7,8].map(fmt).join(' ');
       return [line1, line2, line3];
     }
-
     function copyLine(idx) {
       const lines = buildReportLines();
-      navigator.clipboard.writeText(lines[idx]).then(()=>{
-        alert(`已複製：${idx===0?'上排':idx===1?'中排':'下排'}`);
-      });
+      navigator.clipboard.writeText(lines[idx]).then(()=>{ alert(`已複製${idx===0?'上':idx===1?'中':'下'}排`); });
     }
-
     function copyAllLines() {
       const lines = buildReportLines();
-      navigator.clipboard.writeText(lines.join('\n')).then(()=>{
-        alert("三行報位已複製！");
-      });
+      navigator.clipboard.writeText(lines.join('\n')).then(()=>{ alert("三行已複製"); });
     }
 
     /* 綁定與啟動 */
-    document.getElementById('copyTop').addEventListener('click', () => copyLine(0));
-    document.getElementById('copyMid').addEventListener('click', () => copyLine(1));
-    document.getElementById('copyBot').addEventListener('click', () => copyLine(2));
     document.getElementById('copyAll').addEventListener('click', copyAllLines);
     document.getElementById('clearAll').addEventListener('click',()=>fetchOptions(opts=>clearAll(opts)));
     fetchOptions(opts=>buildBoard(opts));
+
+    /* 主題切換（預設深色） */
+    (function(){
+      var themeKey='mc_theme';
+      function applyTheme(t){
+        document.documentElement.setAttribute('data-theme', t==='light'?'light':'dark');
+        var icon=document.getElementById('themeIcon'); if(icon) icon.textContent=(t==='light'?'☀️':'🌙');
+        var text=document.getElementById('themeText'); if(text) text.textContent=(t==='light'?'淺色':'深色');
+        try{ localStorage.setItem(themeKey,t); }catch(e){}
+      }
+      var saved=null; try{ saved=localStorage.getItem(themeKey); }catch(e){}
+      applyTheme(saved||'dark');
+      var btn=document.getElementById('themeToggle');
+      if(btn){ btn.addEventListener('click', function(){
+        var cur=(document.documentElement.getAttribute('data-theme')==='light')?'light':'dark';
+        applyTheme(cur==='light'?'dark':'light');
+      }); }
+    })();
   </script>
 </body>
 </html>
